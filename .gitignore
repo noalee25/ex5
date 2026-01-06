@@ -1,29 +1,15 @@
-### IntelliJ IDEA ###
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
+# Ignore everything
+*
 
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
+# Except src folder
+!src/
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
+# Except README.md
+!README.md
 
-### VS Code ###
-.vscode/
+# If you want to allow files inside src
+src/**
 
-### Mac OS ###
+# Optional: ignore OS/system files
 .DS_Store
+Thumbs.db
