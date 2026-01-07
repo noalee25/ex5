@@ -41,6 +41,10 @@ public class RegexBank {
     public static final Pattern ONE_ASSIGNMENT_TOKEN =
             Pattern.compile("^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(.+)\\s*$");
 
+    //one assignment line - name + value + ","
+    public static final Pattern ASSIGNMENT_LINE =
+            Pattern.compile("^\\s*([A-Za-z_][A-Za-z0-9_]*\\s*=\\s*[^,;]+)(\\s*,\\s*[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*[^,;]+)*\\s*;\\s*$");
+
     public static final Pattern INT_LITERAL =
             Pattern.compile("^[+-]?\\d+$");
 

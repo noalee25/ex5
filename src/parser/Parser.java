@@ -77,21 +77,22 @@ public class Parser {
                 return new ParsedLine(lineNum, LineKind.METHOD_CALL, rawLine);
             }
             // assignment(s): a=..., b=...;
-            if (RegexBank.ONE_ASSIGNMENT_TOKEN.matcher(rawLine).matches()) {
+            if (RegexBank.ASSIGNMENT_LINE.matcher(rawLine).matches()) {
                 return new ParsedLine(lineNum, LineKind.ASSIGNMENT, rawLine);
             }
 
             // If we got here: it ends with ';' but isn't recognized
             throw new ParserException(lineNum, "Unrecognized statement: " + rawLine);
         } else {
-            //if(condition) { / while(condition) {
-            if (RegexBank.IF_WHILE_HEADER.matcher(rawLine).matches()) {
-                return new ParsedLine(lineNum, LineKind.IF_WHILE_HEADER, rawLine);
-            }
             //method declaration - void name(params) {
             if (RegexBank.METHOD_DECL.matcher(rawLine).matches()) {
                 return new ParsedLine(lineNum, LineKind.METHOD_DECLARATION, rawLine);
             }
+            //if(condition) { / while(condition) {
+            if (RegexBank.IF_WHILE_HEADER.matcher(rawLine).matches()) {
+                return new ParsedLine(lineNum, LineKind.IF_WHILE_HEADER, rawLine);
+            }
+
         }
         return null;
     }
