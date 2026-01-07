@@ -1,39 +1,40 @@
 package parser;
 
-import model.Scope;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Stack;
 
 public class Parser {
 
     private final File file;
-    private Stack<Scope> scopes;
 
     public Parser(File file) {
         this.file = file;
-        scopes = new Stack<>();
     }
 
-    public List<ParsedLine> parseFile() throws Exception {
+    /**
+     * Parses the entire file line by line.
+     * @return List of ParsedLine objects representing each line
+     * @throws IOException if file reading fails
+     * @throws ParserException if syntax errors are found
+     */
+    public List<ParsedLine> parseFile() throws IOException, ParserException {
         List<ParsedLine> lines = new ArrayList<>();
 
-        BufferedReader reader = new BufferedReader(new FileReader(file));
-        String line;
-        int lineNumber = 0;
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            int lineNumber = 0;
 
-        //global scope
-        scopes.push(new Scope(null));
-        while ((line = reader.readLine()) != null) {
-            lineNumber++;
-            //clean line from spaces and stuff...
-            //create Parsed line and keep
+            while ((line = reader.readLine()) != null) {
+                lineNumber++;
+                // Parse and classify this line
+                ParsedLine parsedLine = parseLine(line, lineNumber);
+                lines.add(parsedLine);
+            }
         }
-        //classify line
 
         return lines;
     }
