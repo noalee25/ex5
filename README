@@ -6,3 +6,92 @@ Method decl: ^\s*void\s+([A-Za-z]\w*)\s*\((.*)\)\s*\{\s*$
 If/while: ^\s*(if|while)\s*\((.*)\)\s*\{\s*$
 Var decl start: ^\s*(final\s+)?(int|double|boolean|char|String)\s+(.+);\s*$
 Method call: ^\s*([A-Za-z]\w*)\s*\((.*)\)\s*;\s*$
+
+# Implementation Notes
+
+## Design Overview
+
+### Two-Pass Validation Strategy
+
+**Pass 1: Collection**
+- Scans all lines to build symbol tables
+- Extracts global variables → stores in `globalScope`
+- Extracts method signatures → stores in `methods` Map
+- Validates structural rules (final without value, duplicates, invalid names)
+
+**Pass 2: Validation**
+- Validates method bodies using symbol tables from Pass 1
+- Checks types, scopes, initialization, final reassignment
+- Validates method calls against collected signatures
+- Tracks nested scopes (if/while blocks)
+
+### Scope Management
+
+Uses **parent-child chain** (not stack):
+- Each Scope has a parent pointer
+- `currentScope` pointer moves up/down the tree
+- Variable lookup walks up the chain via `resolve()`
+
+Example:
+```
+globalScope {global}
+    ↑ parent
+methodScope {param, local}
+    ↑ parent  
+ifScope {nestedVar} ← currentScope
+```
+
+### Key Components
+
+**Parser**: Classifies lines using regex patterns
+- Returns `List<ParsedLine>` with line type and raw content
+- No semantic validation, only syntax checking
+
+**Validator**: Semantic validation in two passes
+- Pass 1 builds: `globalScope`, `methods`
+- Pass 2 uses these to validate all references
+
+**Model**: Runtime state during validation
+- `Variable`: Tracks name, type, final, initialization state
+- `Method`: Stores signature and parameters
+- `Scope`: Manages variable visibility with parent chain
+
+## Error Handling
+
+- Type 1 (Code Invalid): `ParserException`, `ValidationException`
+- Type 2 (IO Error): `IOException`, `InvalidFileException`, `InvalidUsageException`
+
+## Type Compatibility Rules
+
+- Same type: always compatible
+- `int` → `double`: allowed
+- `int`/`double` → `boolean`: allowed
+- All other combinations: not allowed
+
+## Project Structure
+
+```
+ex5/
+├── src/
+│   ├── main/
+│   │   ├── Sjavac.java               # Entry point - handles CLI args & orchestrates parsing/validation
+│   │   ├── InvalidFileException.java # Exception for file errors (exit code 2)
+│   │   └── InvalidUsageException.java # Exception for usage errors (exit code 2)
+│   │
+│   ├── parser/
+│   │   ├── Parser.java               # Reads file & classifies each line using regex
+│   │   ├── ParsedLine.java           # Data container for one parsed line
+│   │   ├── LineKind.java             # Enum: line types (VAR_DECLARATION, METHOD_CALL, etc.)
+│   │   ├── RegexBank.java            # All regex patterns used for matching s-Java syntax
+│   │   └── ParserException.java      # Exception for syntax errors (exit code 1)
+│   │
+│   ├── model/
+│   │   ├── Variable.java             # Represents a variable with type, final, initialization state
+│   │   ├── Method.java               # Represents a method with name & parameters
+│   │   └── Scope.java                # Manages variable visibility with parent-child chain
+│   │
+│   └── validator/
+│       ├── Validator.java            # Two-pass semantic validation (616 lines)
+│       └── ValidationException.java  # Exception for semantic errors (exit code 1)
+│
+├── README
