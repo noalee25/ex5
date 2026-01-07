@@ -1,0 +1,8 @@
+Empty / spaces
+Comment: ^//.*$
+Close brace: ^\s*}\s*$
+Return: ^\s*return\s*;\s*$
+Method decl: ^\s*void\s+([A-Za-z]\w*)\s*\((.*)\)\s*\{\s*$
+If/while: ^\s*(if|while)\s*\((.*)\)\s*\{\s*$
+Var decl start: ^\s*(final\s+)?(int|double|boolean|char|String)\s+(.+);\s*$
+Method call: ^\s*([A-Za-z]\w*)\s*\((.*)\)\s*;\s*$
