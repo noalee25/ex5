@@ -1,15 +1,16 @@
 # Ignore everything
 *
 
-# Except src folder
+# Allow README
+!README
+
+# Allow src directory and everything inside it
 !src/
+!src/**
 
-# Except README.md
-!README.md
-
-# If you want to allow files inside src
-src/**
-
-# Optional: ignore OS/system files
+# Ignore OS / system files
 .DS_Store
 Thumbs.db
+
+# Allow the gitignore itself
+!.gitignore
