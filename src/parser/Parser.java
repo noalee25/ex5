@@ -4,7 +4,6 @@ import model.Scope;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,14 +48,16 @@ public class Parser {
         if (rawLine.startsWith("//")) {
             return new ParsedLine(lineNum, LineKind.COMMENT, rawLine);
         }
-        //multi-line comments
-        if (rawLine.contains("/*") || rawLine.contains("*/")) {
+        //comment not at start + multi-line comments
+        int idx = rawLine.indexOf("//");
+        if (rawLine.contains("/*") || rawLine.contains("*/")
+                || rawLine.contains("/**") || (idx >= 0 && idx != 0)) {
             throw new ParserException(lineNum, rawLine);
         }
         //closing brace (must be alone)
         if (RegexBank.CLOSE_BRACE.matcher(rawLine).matches())
             return new ParsedLine(lineNum, LineKind.CLOSE_BRACE, rawLine);
-        //end with ";" or "}"
+        //end with ";" or "{"
         String trimmedLine = rawLine.trim();
         boolean endWithSemicolon = trimmedLine.endsWith(";");
         boolean endWithBrace = trimmedLine.endsWith("{");
@@ -68,20 +69,28 @@ public class Parser {
             if (RegexBank.RETURN_STMT.matcher(rawLine).matches()) {
                 return new ParsedLine(lineNum, LineKind.RETURN, rawLine);
             }
-            // variable declaration: [final] type ...
+            //variable declaration - [final] type ...
             if (RegexBank.VAR_DECL_LINE.matcher(rawLine).matches()) {
                 return new ParsedLine(lineNum, LineKind.VAR_DECLARATION, rawLine);
             }
-            // method call: name(args);
+            //method call - name(args);
             if (RegexBank.METHOD_CALL.matcher(rawLine).matches()) {
                 return new ParsedLine(lineNum, LineKind.METHOD_CALL, rawLine);
             }
-            // assignment(s): a=..., b=...;
-            if (RegexBank.ASSIGNMENT_LINE.matcher(rawLine).matches()) {
+            //assignment(s) - a=..., b=...;
+            if(trimmedLine.contains("=") && !RegexBank.VAR_DECL_LINE.matcher(rawLine).matches()) {
+                String body = trimmedLine.substring(0, trimmedLine.length()-1);
+                String[] parts = body.split(",");
+                for(String part : parts) {
+                    String token = part.trim();
+                    if(token.isEmpty() || !RegexBank.ONE_ASSIGNMENT_TOKEN.matcher(token).matches()) {
+                        throw new ParserException(lineNum, rawLine);
+                    }
+                }
                 return new ParsedLine(lineNum, LineKind.ASSIGNMENT, rawLine);
             }
 
-            // If we got here: it ends with ';' but isn't recognized
+            //if we got here - it ends with ';' but isn't recognized
             throw new ParserException(lineNum, "Unrecognized statement: " + rawLine);
         } else {
             //method declaration - void name(params) {
@@ -94,6 +103,6 @@ public class Parser {
             }
 
         }
-        return null;
+        throw new ParserException(lineNum, "Unrecognized statement");
     }
 }
