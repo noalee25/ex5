@@ -16,8 +16,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 
 /**
- * Validates semantic correctness of parsed s-Java code.
- * Uses a two-pass approach:
+ * validates the code after parsing
  * Pass 1: Collect all globals and method signatures
  * Pass 2: Validate method bodies and semantics
  */
@@ -26,7 +25,11 @@ public class Validator {
     private final List<ParsedLine> lines;
     private Scope globalScope;
     private Map<String, Method> methods;
-    
+
+    /**
+     * constructor
+     * @param lines list of all the ParsedLines
+     */
     public Validator(List<ParsedLine> lines) {
         this.lines = lines;
         this.globalScope = new Scope(null);
@@ -34,43 +37,39 @@ public class Validator {
     }
     
     /**
-     * Main validation method - runs both passes.
+     * main validation method (runs both passes)
      */
     public void validate() throws ValidationException {
-        // Pass 1: Collection
+        // Pass 1: collect data from code
         collectGlobalsAndMethods();
-        
-        // Pass 2: Validation
+        // Pass 2: validate data
         validateMethodBodies();
     }
     
-    // ========== PASS 1: COLLECTION ==========
-    
+    //PASS 1: COLLECTION OF DATA
     /**
-     * Pass 1: Scan all lines and collect global variables and method signatures.
-     * Validates structural rules (final without value, duplicates, etc.)
+     * scan all lines and collect variables and methods (validates structural rules)
      */
     private void collectGlobalsAndMethods() throws ValidationException {
         int i = 0;
-        
         while (i < lines.size()) {
             ParsedLine line = lines.get(i);
-            
             switch (line.getLineKind()) {
                 case VAR_DECLARATION:
-                    // Global variable declaration
+                    // global variable declaration
                     processGlobalVarDeclaration(line);
                     i++;
                     break;
                     
                 case METHOD_DECLARATION:
-                    // Method declaration
+                    // method declaration
                     processMethodDeclaration(line);
-                    // Skip to end of method
+                    // after process skip to end of method
                     i = skipToMethodEnd(i);
                     break;
                     
-                case EMPTY:
+                case EMPTY: //does nothing
+
                 case COMMENT:
                     i++;
                     break;
@@ -80,10 +79,12 @@ public class Validator {
                         "Method calls not allowed in global scope");
                     
                 case ASSIGNMENT:
-                    throw new ValidationException(line.getLineNumber(),
-                        "Assignments not allowed in global scope (must be part of variable declaration)");
-                    
+                    processGlobalAssignment(line);
+                    i++;
+                    break;
+
                 case IF_WHILE_HEADER:
+
                 case RETURN:
                     throw new ValidationException(line.getLineNumber(),
                         "Statement only allowed inside methods");
@@ -97,6 +98,7 @@ public class Validator {
             }
         }
     }
+
     
     /**
      * Process a global variable declaration.
@@ -107,12 +109,12 @@ public class Validator {
             throw new ValidationException(line.getLineNumber(), "Invalid variable declaration");
         }
         
-        String finalModifier = m.group(1);
+        String finalModifier = m.group(1); //checks if final var
         boolean isFinal = (finalModifier != null && finalModifier.trim().equals("final"));
         String type = m.group(2);
         String declarationsStr = m.group(3);
         
-        // Split by comma and process each variable
+        // split by comma and process each variable
         String[] declarations = declarationsStr.split(",");
         for (String decl : declarations) {
             decl = decl.trim();
@@ -121,32 +123,72 @@ public class Validator {
                 throw new ValidationException(line.getLineNumber(), 
                     "Invalid variable declaration: " + decl);
             }
-            
             String varName = declMatcher.group(1);
             String valueStr = declMatcher.group(2);
-            
-            // Validate variable name
+            // validate variable name
             if (!isValidVariableName(varName)) {
                 throw new ValidationException(line.getLineNumber(), 
                     "Invalid variable name: " + varName);
             }
-            
-            // Check for duplicate global variable
+            // check for duplicate global variable
             if (globalScope.resolve(varName) != null) {
                 throw new ValidationException(line.getLineNumber(), 
                     "Variable " + varName + " already declared in global scope");
             }
-            
-            // Check final variables must be initialized
+            // check final variables must be initialized
             if (isFinal && valueStr == null) {
                 throw new ValidationException(line.getLineNumber(), 
                     "Final variable " + varName + " must be initialized");
             }
-            
-            // Create and add variable
+            // create and add variable + check type value
             boolean isInitialized = (valueStr != null);
+            if (isInitialized) {
+                // check the type match the value
+                String valueType = determineValueType(valueStr, globalScope, line.getLineNumber());
+                Variable tempVar = new Variable(varName, type, false, false);
+                if (!tempVar.isCompatibleWith(valueType)) {
+                    throw new ValidationException(line.getLineNumber(),
+                            "Cannot assign " + valueType + " to " + type);
+                }
+            }
             Variable var = new Variable(varName, type, isFinal, isInitialized);
             globalScope.addVariable(var);
+        }
+    }
+
+    /**
+     * Process a global assignment statement.
+     */
+    private void processGlobalAssignment(ParsedLine line) throws ValidationException {
+        String content = line.getRawLine().trim();
+        if (content.endsWith(";")) {
+            content = content.substring(0, content.length() - 1);
+        }
+        String[] assignments = content.split(",");
+        for (String assignment : assignments) {
+            assignment = assignment.trim();
+            Matcher m = RegexBank.ONE_ASSIGNMENT_TOKEN.matcher(assignment);
+            if (!m.matches()) {
+                throw new ValidationException(line.getLineNumber(),
+                        "Invalid assignment: " + assignment);
+            }
+            String varName = m.group(1);
+            String valueStr = m.group(2).trim();
+            Variable var = globalScope.resolve(varName);
+            if (var == null) {
+                throw new ValidationException(line.getLineNumber(),
+                        "Variable " + varName + " not declared");
+            }
+            if (var.isFinal()) {
+                throw new ValidationException(line.getLineNumber(),
+                        "Cannot assign to final variable " + varName);
+            }
+            String valueType = determineValueType(valueStr, globalScope, line.getLineNumber());
+            if (!var.isCompatibleWith(valueType)) {
+                throw new ValidationException(line.getLineNumber(),
+                        "Cannot assign " + valueType + " to " + var.getType());
+            }
+            var.setInitialized(true);
         }
     }
     
@@ -158,23 +200,18 @@ public class Validator {
         if (!m.matches()) {
             throw new ValidationException(line.getLineNumber(), "Invalid method declaration");
         }
-        
         String methodName = m.group(1);
         String paramsStr = m.group(2);
-        
         // Check for duplicate method
         if (methods.containsKey(methodName)) {
             throw new ValidationException(line.getLineNumber(), 
                 "Method " + methodName + " already declared");
         }
-        
         Method method = new Method(methodName, line.getLineNumber());
-        
         // Parse parameters
         if (paramsStr != null && !paramsStr.trim().isEmpty()) {
             String[] params = paramsStr.split(",");
             Set<String> paramNames = new HashSet<>();
-            
             for (String param : params) {
                 param = param.trim();
                 Matcher paramMatcher = RegexBank.PARAM_TOKEN.matcher(param);
@@ -182,30 +219,25 @@ public class Validator {
                     throw new ValidationException(line.getLineNumber(), 
                         "Invalid parameter: " + param);
                 }
-                
                 String finalMod = paramMatcher.group(1);
                 boolean isFinal = (finalMod != null && finalMod.trim().equals("final"));
                 String paramType = paramMatcher.group(2);
                 String paramName = paramMatcher.group(3);
-                
                 // Validate parameter name
                 if (!isValidVariableName(paramName)) {
                     throw new ValidationException(line.getLineNumber(), 
                         "Invalid parameter name: " + paramName);
                 }
-                
                 // Check for duplicate parameter names
                 if (paramNames.contains(paramName)) {
                     throw new ValidationException(line.getLineNumber(), 
                         "Duplicate parameter name: " + paramName);
                 }
                 paramNames.add(paramName);
-                
                 Variable paramVar = new Variable(paramName, paramType, isFinal, true);
                 method.addParameter(paramVar);
             }
         }
-        
         methods.put(methodName, method);
     }
     
@@ -215,10 +247,10 @@ public class Validator {
     private int skipToMethodEnd(int startIndex) {
         int braceCount = 1;
         int i = startIndex + 1;
-        
         while (i < lines.size() && braceCount > 0) {
             ParsedLine line = lines.get(i);
-            if (line.getLineKind() == LineKind.METHOD_DECLARATION || 
+            if ((line.getLineKind() == LineKind.METHOD_DECLARATION
+                    && braceCount == 1 )||
                 line.getLineKind() == LineKind.IF_WHILE_HEADER) {
                 braceCount++;
             } else if (line.getLineKind() == LineKind.CLOSE_BRACE) {
@@ -226,21 +258,17 @@ public class Validator {
             }
             i++;
         }
-        
         return i;
     }
     
-    // ========== PASS 2: VALIDATION ==========
-    
+    //PASS 2: VALIDATION
     /**
-     * Pass 2: Validate all method bodies.
+     * validate all method bodies.
      */
     private void validateMethodBodies() throws ValidationException {
         int i = 0;
-        
         while (i < lines.size()) {
             ParsedLine line = lines.get(i);
-            
             if (line.getLineKind() == LineKind.METHOD_DECLARATION) {
                 validateMethodBody(line, i);
                 i = skipToMethodEnd(i);
@@ -259,41 +287,38 @@ public class Validator {
         if (!m.matches()) {
             throw new ValidationException(methodLine.getLineNumber(), "Invalid method declaration");
         }
-        
         String methodName = m.group(1);
         Method method = methods.get(methodName);
-        
         // Create method scope with parameters
         Scope methodScope = new Scope(globalScope);
         for (Variable param : method.getParameters()) {
             methodScope.addVariable(param);
         }
-        
         Scope currentScope = methodScope;
         int i = startIndex + 1;
         int braceCount = 1;
         boolean hasReturn = false;
         ParsedLine lastCodeLine = null;
-        
         while (i < lines.size() && braceCount > 0) {
             ParsedLine line = lines.get(i);
-            
-            // Track non-empty, non-comment lines
-            if (line.getLineKind() != LineKind.EMPTY && line.getLineKind() != LineKind.COMMENT) {
+            // Track not empty and non comment lines
+            if (line.getLineKind() != LineKind.EMPTY
+                    && line.getLineKind() != LineKind.COMMENT
+                    && line.getLineKind() != LineKind.CLOSE_BRACE) {
                 lastCodeLine = line;
             }
-            
             switch (line.getLineKind()) {
                 case CLOSE_BRACE:
                     braceCount--;
                     if (braceCount == 0) {
-                        // End of method - check return
-                        if (!hasReturn || lastCodeLine.getLineKind() != LineKind.RETURN) {
+                        // end of method - check return
+                        if (!hasReturn ||
+                                (lastCodeLine != null && lastCodeLine.getLineKind() != LineKind.RETURN)) {
                             throw new ValidationException(line.getLineNumber(), 
                                 "Method must end with return statement");
                         }
                     } else {
-                        // End of inner block - pop scope
+                        // end of inner block - pop scope
                         currentScope = currentScope.getParent();
                     }
                     break;
@@ -313,7 +338,7 @@ public class Validator {
                 case IF_WHILE_HEADER:
                     processCondition(line, currentScope);
                     braceCount++;
-                    // Create nested scope
+                    // create nested scope
                     currentScope = new Scope(currentScope);
                     break;
                     
@@ -332,7 +357,6 @@ public class Validator {
                 default:
                     break;
             }
-            
             i++;
         }
     }
@@ -345,12 +369,10 @@ public class Validator {
         if (!m.matches()) {
             throw new ValidationException(line.getLineNumber(), "Invalid variable declaration");
         }
-        
         String finalModifier = m.group(1);
         boolean isFinal = (finalModifier != null && finalModifier.trim().equals("final"));
         String type = m.group(2);
         String declarationsStr = m.group(3);
-        
         String[] declarations = declarationsStr.split(",");
         for (String decl : declarations) {
             decl = decl.trim();
@@ -359,34 +381,27 @@ public class Validator {
                 throw new ValidationException(line.getLineNumber(), 
                     "Invalid variable declaration: " + decl);
             }
-            
             String varName = declMatcher.group(1);
             String valueStr = declMatcher.group(2);
-            
             if (!isValidVariableName(varName)) {
                 throw new ValidationException(line.getLineNumber(), 
                     "Invalid variable name: " + varName);
             }
-            
-            // Check for duplicate in current scope
+            // check for duplicate in current scope
             Variable existing = scope.resolve(varName);
             if (existing != null && scope.getParent() != null) {
-                // Variable exists - check if it's in parent scope (allowed) or current scope (not allowed)
+                // variable exists - check if it is in parent scope or current scope
                 Scope parentScope = scope.getParent();
                 Variable inParent = (parentScope != null) ? parentScope.resolve(varName) : null;
-                if (existing == inParent) {
-                    // It's in parent scope - shadowing is allowed
-                } else {
-                    throw new ValidationException(line.getLineNumber(), 
-                        "Variable " + varName + " already declared in this scope");
+                if (existing != inParent) {
+                    throw new ValidationException(line.getLineNumber(),
+                            "Variable " + varName + " already declared in this scope");
                 }
             }
-            
             if (isFinal && valueStr == null) {
                 throw new ValidationException(line.getLineNumber(), 
                     "Final variable " + varName + " must be initialized");
             }
-            
             boolean isInitialized = (valueStr != null);
             if (isInitialized) {
                 String valueType = determineValueType(valueStr, scope, line.getLineNumber());
@@ -396,7 +411,6 @@ public class Validator {
                         "Cannot assign " + valueType + " to " + type);
                 }
             }
-            
             Variable var = new Variable(varName, type, isFinal, isInitialized);
             scope.addVariable(var);
         }
@@ -410,7 +424,6 @@ public class Validator {
         if (content.endsWith(";")) {
             content = content.substring(0, content.length() - 1);
         }
-        
         String[] assignments = content.split(",");
         for (String assignment : assignments) {
             assignment = assignment.trim();
@@ -419,28 +432,25 @@ public class Validator {
                 throw new ValidationException(line.getLineNumber(), 
                     "Invalid assignment: " + assignment);
             }
-            
             String varName = m.group(1);
             String valueStr = m.group(2).trim();
-            
             Variable var = scope.resolve(varName);
             if (var == null) {
                 throw new ValidationException(line.getLineNumber(), 
                     "Variable " + varName + " not declared");
             }
-            
             if (var.isFinal()) {
                 throw new ValidationException(line.getLineNumber(), 
                     "Cannot assign to final variable " + varName);
             }
-            
             String valueType = determineValueType(valueStr, scope, line.getLineNumber());
             if (!var.isCompatibleWith(valueType)) {
                 throw new ValidationException(line.getLineNumber(), 
                     "Cannot assign " + valueType + " to " + var.getType());
             }
-            
-            var.setInitialized(true);
+            if(scope.getVariables().containsKey(var.getName())) {
+                var.setInitialized(true);
+            }
         }
     }
     
@@ -452,17 +462,14 @@ public class Validator {
         if (!m.matches()) {
             throw new ValidationException(line.getLineNumber(), "Invalid method call");
         }
-        
         String methodName = m.group(1);
         String argsStr = m.group(2);
-        
         Method method = methods.get(methodName);
         if (method == null) {
             throw new ValidationException(line.getLineNumber(), 
                 "Method " + methodName + " not defined");
         }
-        
-        // Parse arguments
+        // parse arguments
         List<String> argTypes = new ArrayList<>();
         if (argsStr != null && !argsStr.trim().isEmpty()) {
             String[] args = argsStr.split(",");
@@ -472,7 +479,6 @@ public class Validator {
                 argTypes.add(argType);
             }
         }
-        
         if (!method.matchesArgumentTypes(argTypes)) {
             throw new ValidationException(line.getLineNumber(), 
                 "Method " + methodName + " called with incompatible arguments");
@@ -487,7 +493,6 @@ public class Validator {
         if (!m.matches()) {
             throw new ValidationException(line.getLineNumber(), "Invalid if/while statement");
         }
-        
         String conditionStr = m.group(2).trim();
         validateCondition(conditionStr, scope, line.getLineNumber());
     }
@@ -497,31 +502,25 @@ public class Validator {
      */
     private void validateCondition(String conditionStr, Scope scope, int lineNumber) 
             throws ValidationException {
-        // Split by || and &&
+        // split by || and &&
         String[] orParts = conditionStr.split("\\|\\|");
-        
         for (String orPart : orParts) {
             String[] andParts = orPart.split("&&");
-            
             for (String element : andParts) {
                 element = element.trim();
-                
                 if (element.isEmpty()) {
                     throw new ValidationException(lineNumber, "Invalid condition: empty element");
                 }
-                
-                // Check if it's a boolean literal
+                // check if boolean literal
                 if (RegexBank.BOOLEAN_LITERAL.matcher(element).matches()) {
                     continue;
                 }
-                
-                // Check if it's a number literal
+                // check if number literal
                 if (RegexBank.INT_LITERAL.matcher(element).matches() || 
                     RegexBank.DOUBLE_LITERAL.matcher(element).matches()) {
                     continue;
                 }
-                
-                // Check if it's a variable
+                // check if variable
                 if (RegexBank.IDENTIFIER.matcher(element).matches()) {
                     Variable var = scope.resolve(element);
                     if (var == null) {
@@ -539,23 +538,20 @@ public class Validator {
                     }
                     continue;
                 }
-                
                 throw new ValidationException(lineNumber, 
                     "Invalid condition element: " + element);
             }
         }
     }
     
-    // ========== HELPER METHODS ==========
-    
+    //HELPER METHODS
     /**
      * Determine the type of a value expression.
      */
     private String determineValueType(String valueStr, Scope scope, int lineNumber) 
             throws ValidationException {
         valueStr = valueStr.trim();
-        
-        // Check literals
+        // check literals
         if (RegexBank.INT_LITERAL.matcher(valueStr).matches()) {
             return "int";
         }
@@ -571,8 +567,7 @@ public class Validator {
         if (RegexBank.STRING_LITERAL.matcher(valueStr).matches()) {
             return "String";
         }
-        
-        // Check if it's a variable
+        // check if variable
         if (RegexBank.IDENTIFIER.matcher(valueStr).matches()) {
             Variable var = scope.resolve(valueStr);
             if (var == null) {
@@ -585,7 +580,6 @@ public class Validator {
             }
             return var.getType();
         }
-        
         throw new ValidationException(lineNumber, "Invalid value: " + valueStr);
     }
     
@@ -593,22 +587,19 @@ public class Validator {
      * Check if a variable name is valid according to s-Java rules.
      */
     private boolean isValidVariableName(String name) {
-        // Cannot start with digit
+        // cannot start with digit
         if (name.length() > 0 && Character.isDigit(name.charAt(0))) {
             return false;
         }
-        
-        // Cannot be just single underscore
+        // cannot be just single underscore
         if (name.equals("_")) {
             return false;
         }
-        
-        // Cannot start with double underscore
+        // cannot start with double underscore
         if (name.startsWith("__")) {
             return false;
         }
-        
-        // Must match general pattern
+        // must match general pattern
         return RegexBank.IDENTIFIER.matcher(name).matches();
     }
 }

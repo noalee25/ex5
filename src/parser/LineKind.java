@@ -1,5 +1,8 @@
 package parser;
 
+/**
+ * defining the line types for a parsed line
+ */
 public enum LineKind {
     EMPTY,
     COMMENT,

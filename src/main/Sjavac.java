@@ -26,10 +26,14 @@ public class Sjavac {
     private static final int CODE_VALID = 0;
     private static final int CODE_INVALID = 1;
     private static final int CODE_IO_ERROR = 2;
-    
+
+    /**
+     * the main manager of the program
+     * @param args
+     */
     public static void main(String[] args) {
         try {
-            // Step 1: Validate command-line arguments
+            // step 1: validate command line arguments
             if (args.length != 1) {
                 throw new InvalidUsageException(
                     "Usage: java main.Sjavac <source_file.sjava>");
@@ -37,13 +41,13 @@ public class Sjavac {
             
             String filename = args[0];
             
-            // Step 2: Validate file extension
+            // step 2: validate file extension
             if (!filename.endsWith(SJAVA_EXTENSION)) {
                 throw new InvalidFileException(
                     "File must have " + SJAVA_EXTENSION + " extension");
             }
             
-            // Step 3: Check file exists and is readable
+            // step 3: check file exists and is readable
             File sourceFile = new File(filename);
             if (!sourceFile.exists()) {
                 throw new InvalidFileException(
@@ -58,24 +62,24 @@ public class Sjavac {
                     "Cannot read file: " + filename);
             }
             
-            // Step 4: Parse the file
+            // step 4: parse the file
             Parser parser = new Parser(sourceFile);
             List<ParsedLine> parsedLines = parser.parseFile();
             
-            // Step 5: Validate the parsed code
+            // step 5: validate the parsed code
             Validator validator = new Validator(parsedLines);
             validator.validate();
             
-            // Step 6: If we reach here, code is valid
+            // step 6: if we reach here, code is valid
             System.out.println(CODE_VALID);
             
         } catch (InvalidUsageException e) {
-            // Usage error (wrong number of arguments)
+            // usage error (wrong number of arguments)
             System.err.println("Error: " + e.getMessage());
             System.out.println(CODE_IO_ERROR);
             
         } catch (InvalidFileException e) {
-            // File error (doesn't exist, wrong extension, etc.)
+            // file error (doesn't exist, wrong extension...)
             System.err.println("Error: " + e.getMessage());
             System.out.println(CODE_IO_ERROR);
             
@@ -85,17 +89,17 @@ public class Sjavac {
             System.out.println(CODE_IO_ERROR);
             
         } catch (ParserException e) {
-            // Syntax error during parsing
+            // syntax error during parsing
             System.err.println("Syntax Error: " + e.getMessage());
             System.out.println(CODE_INVALID);
             
         } catch (ValidationException e) {
-            // Semantic error during validation
+            // semantic error during validation
             System.err.println("Validation Error: " + e.getMessage());
             System.out.println(CODE_INVALID);
             
         } catch (Exception e) {
-            // Unexpected error
+            // unexpected error
             System.err.println("Unexpected Error: " + e.getMessage());
             e.printStackTrace();
             System.out.println(CODE_IO_ERROR);

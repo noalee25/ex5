@@ -1,97 +1,92 @@
-Empty / spaces
-Comment: ^//.*$
-Close brace: ^\s*}\s*$
-Return: ^\s*return\s*;\s*$
-Method decl: ^\s*void\s+([A-Za-z]\w*)\s*\((.*)\)\s*\{\s*$
-If/while: ^\s*(if|while)\s*\((.*)\)\s*\{\s*$
-Var decl start: ^\s*(final\s+)?(int|double|boolean|char|String)\s+(.+);\s*$
-Method call: ^\s*([A-Za-z]\w*)\s*\((.*)\)\s*;\s*$
+niliklejman, noalee25
+212297303, 212392823
 
-# Implementation Notes
+MAIN REGULAR EXPRESSIONS:
+1. Variable Declaration Line Pattern (VAR_DECL_LINE)
+   Pattern: ^\\s*(final\\s+)?(int|double|boolean|char|String)\\s+(.+)\\s*;\\s*$
+   Structure Breakdown:
+   - ^\\s*  : start of line, with optional leading whitespace
+   - (final\\s+)?  : optional "final" modifier followed by whitespace (captured in group 1)
+   - (int|double|boolean|char|String) : Type keyword - one of the five allowed types (captured in group 2)
+   - \\s+ : required whitespace separator after type
+   - (.+) : declaration list - one or more variables with optional initializers (captured in group 3)
+   - \\s*;\\s*$ : optional whitespace, required semicolon, optional trailing whitespace, end of line
 
-## Design Overview
+   Purpose: Identifies variable declaration lines at both global scope and within methods.The
+   declaration list is further parsed by ONE_VAR_DECL_TOKEN to handle comma-separated variables.
 
-### Two-Pass Validation Strategy
+2. Method Declaration Pattern (METHOD_DECL)
+   Pattern: ^\\s*void\\s+([A-Za-z][A-Za-z0-9_]*)\\s*\\((.*)\\)\\s*\\{\\s*$
+   Structure Breakdown:
+   - ^\\s* : Start of line, optional leading whitespace
+   - void\\s+ : literal "void" keyword followed by required whitespace
+   - ([A-Za-z][A-Za-z0-9_]*)  : Method name (captured in group 1)  must start with a letter [A-Za-z]
+                                and followed by zero or more letters, digits, or underscores [A-Za-z0-9_]*
+   - \\s*\\( : optional whitespace, opening parenthesis
+   - (.*) : parameter list - any characters (captured in group 2), can be empty
+   - \\)\\s*\\{\\s*$ : closing parenthesis, optional whitespace,
+                       opening brace, optional whitespace, end of line
 
-**Pass 1: Collection**
-- Scans all lines to build symbol tables
-- Extracts global variables → stores in `globalScope`
-- Extracts method signatures → stores in `methods` Map
-- Validates structural rules (final without value, duplicates, invalid names)
+   Purpose: Identifies method declarations and extracts method name and parameter list. The method name must 
+   start with a letter , and the parameter list is later parsed by 
+   PARAM_TOKEN to extract individual parameters with their types and modifiers. This pattern enforces that 
+   all methods must be void and have proper structure.
 
-**Pass 2: Validation**
-- Validates method bodies using symbol tables from Pass 1
-- Checks types, scopes, initialization, final reassignment
-- Validates method calls against collected signatures
-- Tracks nested scopes (if/while blocks)
+DESIGN CHOICES AND ARCHITECTURE:
+two pass validation strategy:
+we implemented a two pass approach to handle forward references
+and method calls before method bodies are validated:
 
-### Scope Management
+pass 1 - collection phase:
+- scans all lines to build symbol tables
+- collects all global variables into globalScope
+- collects all method signatures into methods Map
+- validates structural rules: final variables must be initialized, no duplicate declarations, valid names
+- global assignments are allowed and mark variables as initialized
 
-Uses **parent-child chain** (not stack):
-- Each Scope has a parent pointer
-- `currentScope` pointer moves up/down the tree
-- Variable lookup walks up the chain via `resolve()`
+pass 2 - validation phase:
+- validates each method body independently
+- verifies type compatibility for assignments and method calls
+- checks variable initialization states (with scope-aware tracking)
+- validates conditions in if/while statements
+- ensures all methods end with return statements
 
-Example:
-```
-globalScope {global}
-    ↑ parent
-methodScope {param, local}
-    ↑ parent  
-ifScope {nestedVar} ← currentScope
-```
+this separation allows methods to call other methods defined later in the file and enables global variable 
+validation before method body processing.
 
-### Key Components
+scope management - parent child chain:
+we implemented scopes as a tree structure with parent pointers:
+- each Scope maintains a parent reference and its own variable map
+- variable resolution walks up the parent chain until found or null
+- when entering nested blocks (if/while), a new child scope is created
+- when exiting blocks, we pop back to the parent scope
+- this design naturally handles shadowing and nested scope visibility
 
-**Parser**: Classifies lines using regex patterns
-- Returns `List<ParsedLine>` with line type and raw content
-- No semantic validation, only syntax checking
 
-**Validator**: Semantic validation in two passes
-- Pass 1 builds: `globalScope`, `methods`
-- Pass 2 uses these to validate all references
+MODULE RESPONSIBILITIES:
+main/ package:
+-Sjavac.java: validates command-line arguments, checks file existence and readability, 
+maneges Parser ,and validator catches all exceptions
+InvalidUsageException.java: wrong number of arguments
+InvalidFileException.java: file does not exist, wrong extension, cannot read
 
-**Model**: Runtime state during validation
-- `Variable`: Tracks name, type, final, initialization state
-- `Method`: Stores signature and parameters
-- `Scope`: Manages variable visibility with parent chain
+parser/ package:
+-Parser.java: reads source file line by line and classifies each line,
+ uses RegexBank patterns to identify line types,
+ returns List<ParsedLine> with line type and raw content, detects syntax errors
+-ParsedLine.java: data container for one parsed line
+-LineKind.java: enum defining all possible line types
+-RegexBank.java: central repository of all regex patterns used for matching s-Java syntax
+-ParserException.java: syntax errors
 
-## Error Handling
+model/ package:
+-Variable.java: represents a variable
+-Method.java: represents a method signature
+-Scope.java: manages variable visibility using parent child chain
 
-- Type 1 (Code Invalid): `ParserException`, `ValidationException`
-- Type 2 (IO Error): `IOException`, `InvalidFileException`, `InvalidUsageException`
-
-## Type Compatibility Rules
-
-- Same type: always compatible
-- `int` → `double`: allowed
-- `int`/`double` → `boolean`: allowed
-- All other combinations: not allowed
-
-## Project Structure
-
-```
-ex5/
-├── src/
-│   ├── main/
-│   │   ├── Sjavac.java               # Entry point - handles CLI args & orchestrates parsing/validation
-│   │   ├── InvalidFileException.java # Exception for file errors (exit code 2)
-│   │   └── InvalidUsageException.java # Exception for usage errors (exit code 2)
-│   │
-│   ├── parser/
-│   │   ├── Parser.java               # Reads file & classifies each line using regex
-│   │   ├── ParsedLine.java           # Data container for one parsed line
-│   │   ├── LineKind.java             # Enum: line types (VAR_DECLARATION, METHOD_CALL, etc.)
-│   │   ├── RegexBank.java            # All regex patterns used for matching s-Java syntax
-│   │   └── ParserException.java      # Exception for syntax errors (exit code 1)
-│   │
-│   ├── model/
-│   │   ├── Variable.java             # Represents a variable with type, final, initialization state
-│   │   ├── Method.java               # Represents a method with name & parameters
-│   │   └── Scope.java                # Manages variable visibility with parent-child chain
-│   │
-│   └── validator/
-│       ├── Validator.java            # Two-pass semantic validation (616 lines)
-│       └── ValidationException.java  # Exception for semantic errors (exit code 1)
-│
-├── README
+validator/ package:
+Validator.java: two pass semantic validation
+collects global variables and method signatures, 
+validates method bodies, validates assignments, 
+validates method calls, validates if/while conditions
+ValidationException.java: semantic errors

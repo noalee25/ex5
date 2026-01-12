@@ -7,10 +7,17 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * parse the whole file to lines
+ */
 public class Parser {
 
     private final File file;
 
+    /**
+     * constructor
+     * @param file the Sjava file to read from
+     */
     public Parser(File file) {
         this.file = file;
     }
@@ -27,7 +34,6 @@ public class Parser {
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
             int lineNumber = 0;
-
             while ((line = reader.readLine()) != null) {
                 lineNumber++;
                 // Parse and classify this line
@@ -35,11 +41,17 @@ public class Parser {
                 lines.add(parsedLine);
             }
         }
-
         return lines;
     }
 
-
+    /**
+     * takes raw line and turns it to a ParsedLine according to the line content
+     * also checks some cases of unrecognized line types
+     * @param rawLine original line
+     * @param lineNum line number
+     * @return the line as a ParsedLine
+     * @throws ParserException if there is a problem with the line
+     */
     public ParsedLine parseLine(String rawLine, int lineNum) throws ParserException {
         //check if empty
         if (rawLine.trim().isEmpty()) {
@@ -90,7 +102,6 @@ public class Parser {
                 }
                 return new ParsedLine(lineNum, LineKind.ASSIGNMENT, rawLine);
             }
-
             //if we got here - it ends with ';' but isn't recognized
             throw new ParserException(lineNum, "Unrecognized statement: " + rawLine);
         } else {
@@ -102,7 +113,6 @@ public class Parser {
             if (RegexBank.IF_WHILE_HEADER.matcher(rawLine).matches()) {
                 return new ParsedLine(lineNum, LineKind.IF_WHILE_HEADER, rawLine);
             }
-
         }
         throw new ParserException(lineNum, "Unrecognized statement");
     }

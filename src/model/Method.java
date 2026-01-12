@@ -12,36 +12,35 @@ public class Method {
     private final List<Variable> parameters;
     private final int declarationLine;
 
+    /**
+     * constructor
+     * @param name method name
+     * @param declarationLine line number of declaration of the method
+     */
     public Method(String name, int declarationLine) {
         this.name = name;
         this.parameters = new ArrayList<>();
         this.declarationLine = declarationLine;
     }
 
-    public String getName() {
-        return name;
-    }
-
+    /**
+     * @return list of all the parameters in the method
+     */
     public List<Variable> getParameters() {
         return parameters;
     }
 
-    public int getDeclarationLine() {
-        return declarationLine;
-    }
-
+    /**
+     * adds a parameter to the function
+     * @param param
+     */
     public void addParameter(Variable param) {
         parameters.add(param);
     }
 
-    public int getParameterCount() {
-        return parameters.size();
-    }
-
     /**
-     * Checks if the given argument types match this method's parameter types.
-     * Accounts for type compatibility (int→double, int/double→boolean).
-     * 
+     * Checks if the given argument types match this method's parameter types
+     * Accounts for type compatibility
      * @param argTypes List of argument type names
      * @return true if arguments match, false otherwise
      */
@@ -49,7 +48,6 @@ public class Method {
         if (argTypes.size() != parameters.size()) {
             return false;
         }
-        
         for (int i = 0; i < parameters.size(); i++) {
             Variable param = parameters.get(i);
             String argType = argTypes.get(i);
@@ -58,7 +56,6 @@ public class Method {
                 return false;
             }
         }
-        
         return true;
     }
 }
